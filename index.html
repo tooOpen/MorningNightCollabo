@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>아침의 나 · 밤의 나</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="아침밤 상황판">
+<style>
+/* iPad mini 2 (iOS 12 / Safari 12) 대상: flex gap, clamp(), inset, ?. 등 최신 문법 사용 금지 */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  font-size: 17px; line-height: 1.5;
+  background: var(--bg); color: var(--ink);
+  -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
+  transition: background .6s, color .6s;
+}
+body.morning {
+  --bg: #f4eee2; --panel: #fffaf0; --ink: #2b2620; --sub: #7a6f60;
+  --line: #e2d8c5; --accent: #cf5a24; --accent-ink: #fff;
+  --ok: #3f7d4e; --no: #a8482f; --soft: #efe6d4; --track: #e6dcc8;
+}
+body.night {
+  --bg: #10142a; --panel: #191e3b; --ink: #ece7dc; --sub: #9a9fbd;
+  --line: #2c3258; --accent: #e9c46a; --accent-ink: #1a1a2e;
+  --ok: #7fc99a; --no: #e08a76; --soft: #222848; --track: #2c3258;
+}
+button, input, textarea, select { font: inherit; color: inherit; }
+button { border: 0; background: none; padding: 0; cursor: pointer; }
+.serif { font-family: "AppleMyungjo", "Nanum Myeongjo", "Batang", serif; }
+
+#app { height: 100%; display: -webkit-flex; display: flex; -webkit-flex-direction: column; flex-direction: column; padding: 20px 24px 12px; padding-top: 28px; }
+
+/* 머리 */
+.head { display: -webkit-flex; display: flex; -webkit-align-items: flex-end; align-items: flex-end; -webkit-justify-content: space-between; justify-content: space-between; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.who { display: -webkit-flex; display: flex; -webkit-align-items: center; align-items: center; }
+.orb { width: 44px; height: 44px; border-radius: 50%; margin-right: 14px; -webkit-flex-shrink: 0; flex-shrink: 0; }
+.morning .orb { background: var(--accent); box-shadow: 0 0 0 7px rgba(207,90,36,.16); }
+.night .orb { background: transparent; box-shadow: inset -13px -5px 0 0 var(--accent); }
+.who h1 { margin: 0; font-size: 30px; line-height: 1.15; letter-spacing: -.5px; }
+.who p { margin: 2px 0 0; color: var(--sub); font-size: 15px; }
+.clock { text-align: right; }
+.clock b { display: block; font-size: 40px; line-height: 1; font-weight: 300; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+.clock span { color: var(--sub); font-size: 14px; }
+
+.preview { margin-top: 10px; padding: 8px 14px; border-radius: 10px; background: var(--soft); color: var(--sub); font-size: 14px; }
+.preview button { color: var(--accent); font-weight: 600; margin-left: 8px; padding: 4px 6px; }
+
+/* 본문 2단 */
+.main { -webkit-flex: 1; flex: 1; min-height: 0; display: grid; grid-template-columns: 1.35fr 1fr; grid-gap: 22px; padding-top: 16px; }
+.col { min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: 12px; }
+.sec-title { font-size: 13px; font-weight: 700; letter-spacing: 1px; color: var(--sub); margin: 0 0 8px; }
+.lead { margin: 0 0 4px; font-size: 22px; font-weight: 700; letter-spacing: -.3px; }
+.lead-sub { margin: 0 0 14px; color: var(--sub); font-size: 15px; }
+.count { float: right; font-size: 15px; font-weight: 600; color: var(--sub); padding-top: 6px; }
+
+/* 부탁 카드 */
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; margin-bottom: 12px; }
+.card.done { opacity: .62; }
+.card.skip { border-style: dashed; }
+.c-text { font-size: 23px; font-weight: 700; line-height: 1.3; letter-spacing: -.3px; word-break: keep-all; }
+.card.done .c-text { text-decoration: line-through; }
+.c-why { margin-top: 8px; padding-left: 12px; border-left: 3px solid var(--accent); font-size: 18px; line-height: 1.55; word-break: keep-all; }
+.c-why small { display: block; font-family: -apple-system, "Apple SD Gothic Neo", sans-serif; font-size: 13px; color: var(--sub); margin-top: 2px; }
+.c-meta { margin-top: 8px; font-size: 14px; color: var(--sub); }
+.c-meta b { color: var(--accent); }
+.c-btns { margin-top: 12px; display: -webkit-flex; display: flex; }
+.btn { min-height: 46px; padding: 0 20px; border-radius: 12px; font-weight: 700; font-size: 17px; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); -webkit-flex: 1; flex: 1; }
+.btn.ghost { border: 1px solid var(--line); color: var(--sub); margin-left: 10px; font-weight: 600; }
+.btn.danger { color: var(--no); border: 1px solid var(--line); }
+.c-state { margin-top: 10px; font-size: 15px; font-weight: 600; }
+.c-state.ok { color: var(--ok); }
+.c-state.no { color: var(--no); }
+.c-state button { float: right; color: var(--sub); font-weight: 500; font-size: 14px; padding: 2px 6px; text-decoration: underline; }
+.c-state i { display: block; font-style: normal; font-weight: 400; color: var(--sub); margin-top: 2px; }
+
+.empty { border: 1px dashed var(--line); border-radius: 16px; padding: 26px 20px; color: var(--sub); text-align: center; word-break: keep-all; }
+.allok { border-radius: 16px; padding: 16px 18px; background: var(--soft); font-size: 18px; margin-bottom: 12px; word-break: keep-all; }
+
+/* 오른쪽 */
+.box { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px 18px; margin-bottom: 14px; }
+.plea { font-size: 19px; line-height: 1.55; margin: 0 0 14px; word-break: keep-all; }
+.meter { margin-top: 10px; }
+.meter-top { display: -webkit-flex; display: flex; -webkit-justify-content: space-between; justify-content: space-between; font-size: 14px; }
+.meter-top b { font-variant-numeric: tabular-nums; }
+.track { height: 8px; border-radius: 4px; background: var(--track); margin-top: 4px; overflow: hidden; }
+.fill { height: 100%; border-radius: 4px; background: var(--accent); }
+.fill.dim { background: var(--sub); }
+.meter small { color: var(--sub); font-size: 12px; }
+
+.letter { font-size: 18px; line-height: 1.6; white-space: pre-wrap; word-break: keep-all; }
+.letter-none { color: var(--sub); font-size: 15px; }
+textarea, input[type=text] { width: 100%; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); padding: 10px 12px; font-size: 17px; -webkit-appearance: none; outline: none; }
+textarea { resize: none; display: block; }
+textarea:focus, input[type=text]:focus { border-color: var(--accent); }
+
+.ask { display: block; width: 100%; text-align: left; padding: 10px 0; border-top: 1px solid var(--line); }
+.ask:first-of-type { border-top: 0; }
+.ask-t { font-weight: 600; word-break: keep-all; }
+.ask-r { font-size: 14px; color: var(--sub); margin-top: 1px; }
+.ask-r.ok { color: var(--ok); }
+.ask-r.no { color: var(--no); }
+.add { display: block; width: 100%; min-height: 44px; margin-top: 8px; border: 1px dashed var(--line); border-radius: 12px; color: var(--accent); font-weight: 700; }
+
+.foot { padding-top: 8px; border-top: 1px solid var(--line); display: -webkit-flex; display: flex; -webkit-justify-content: space-between; justify-content: space-between; font-size: 13px; color: var(--sub); }
+.foot button { padding: 6px 4px; color: var(--sub); text-decoration: underline; }
+
+/* 모달 */
+#modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,.5); z-index: 10; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 60px 20px 20px; }
+#modal.on { display: block; }
+.sheet { max-width: 560px; margin: 0 auto; background: var(--panel); border-radius: 18px; padding: 22px; }
+.sheet h2 { margin: 0 0 4px; font-size: 22px; }
+.sheet p { margin: 0 0 14px; color: var(--sub); font-size: 15px; word-break: keep-all; }
+.sheet label { display: block; font-size: 14px; font-weight: 700; margin: 12px 0 5px; }
+.sheet .quote { border-left: 3px solid var(--accent); padding-left: 12px; font-size: 19px; margin: 0 0 14px; color: var(--ink); }
+.sheet-btns { margin-top: 18px; display: -webkit-flex; display: flex; }
+.sheet-btns .sp { -webkit-flex: 1; flex: 1; }
+.sheet-btns .btn { margin-left: 8px; -webkit-flex: none; flex: none; }
+.sheet-btns .btn:first-child { margin-left: 0; }
+.sheet select { font-size: 17px; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); }
+.err { color: var(--no); font-size: 14px; margin-top: 6px; min-height: 20px; }
+
+@media (max-width: 800px) {
+  #app { height: auto; min-height: 100%; }
+  .main { display: block; }
+  .col { overflow: visible; }
+  .who h1 { font-size: 25px; }
+  .clock b { font-size: 32px; }
+}
+</style>
+</head>
+<body class="morning">
+<div id="app"></div>
+<div id="modal"></div>
+
+<script>
+// ES5로만 작성 (iOS 12 Safari 호환)
+(function () {
+  'use strict';
+
+  var KEY = 'mn-board-v1';
+  var DEMO = /[?&]demo/.test(location.search);
+  var NAME = { morning: '아침의 나', night: '밤의 나' };
+  var DAYS = ['일', '월', '화', '수', '목', '금', '토'];
+
+  var state = load();
+  var override = null;   // 미리보기로 강제한 관점
+  var modal = null;      // {type, ...}
+  var lastKey = '';
+
+  function blank() {
+    return { items: [], log: {}, notes: { morning: { text: '' }, night: { text: '' } }, settings: { morningStart: 4, nightStart: 17 } };
+  }
+  function load() {
+    var s = null;
+    try { s = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+    if (!s || !s.items) s = blank();
+    if (!s.log) s.log = {};
+    if (!s.notes) s.notes = { morning: { text: '' }, night: { text: '' } };
+    if (!s.settings) s.settings = { morningStart: 4, nightStart: 17 };
+    return s;
+  }
+  function save() {
+    if (DEMO) return;
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  // ---------- 시간 ----------
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function fmt(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function parse(s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function addDays(s, n) { var d = parse(s); d.setDate(d.getDate() + n); return fmt(d); }
+  // 하루는 '아침 시작 시각'에 시작한다. 새벽 2시는 아직 어제의 밤.
+  function today() { return fmt(new Date(Date.now() - state.settings.morningStart * 3600000)); }
+  function autoMode() {
+    var h = new Date().getHours();
+    return (h >= state.settings.morningStart && h < state.settings.nightStart) ? 'morning' : 'night';
+  }
+  function mode() { return override || autoMode(); }
+  function other(m) { return m === 'morning' ? 'night' : 'morning'; }
+
+  // ---------- 기록 ----------
+  function existed(it, day) { return it.created <= day && (!it.archived || it.archived > day); }
+  function itemsFor(self, day) {
+    var out = [];
+    for (var i = 0; i < state.items.length; i++) {
+      if (state.items[i].to === self && existed(state.items[i], day)) out.push(state.items[i]);
+    }
+    return out;
+  }
+  function entry(day, id) { return (state.log[day] && state.log[day][id]) || null; }
+  function setEntry(day, id, val) {
+    if (!state.log[day]) state.log[day] = {};
+    if (val) state.log[day][id] = val; else delete state.log[day][id];
+    save();
+  }
+  // self의 '마지막으로 끝난 차례'가 속한 날
+  function lastDone(self, m) {
+    var t = today();
+    return (self === 'morning' && m === 'night') ? t : addDays(t, -1);
+  }
+  function session(self, day) {
+    var its = itemsFor(self, day), done = 0;
+    for (var i = 0; i < its.length; i++) {
+      var e = entry(day, its[i].id);
+      if (e && e.s === 'done') done++;
+    }
+    return { total: its.length, done: done };
+  }
+  function rate(self, m) {
+    var day = lastDone(self, m), total = 0, done = 0;
+    for (var i = 0; i < 7; i++) {
+      var s = session(self, day);
+      total += s.total; done += s.done;
+      day = addDays(day, -1);
+    }
+    return { total: total, done: done, pct: total ? Math.round(done / total * 100) : null };
+  }
+  function streak(it, m) {
+    var n = 0, day = lastDone(it.to, m), e;
+    for (var i = 0; i < 400; i++) {
+      e = entry(day, it.id);
+      if (!(e && e.s === 'done')) break;
+      n++; day = addDays(day, -1);
+    }
+    if (it.to === m) { e = entry(today(), it.id); if (e && e.s === 'done') n++; }
+    return n;
+  }
+  function findItem(id) {
+    for (var i = 0; i < state.items.length; i++) if (state.items[i].id === id) return state.items[i];
+    return null;
+  }
+
+  // ---------- 그리기 ----------
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function lastLabel(self, m) {
+    // m 시점에서 본 self의 지난 차례 이름
+    if (self === 'night') return m === 'morning' ? '어젯밤의 나' : '어젯밤의 나';
+    return m === 'night' ? '오늘 아침의 나' : '어제 아침의 나';
+  }
+
+  function plea(m) {
+    var o = other(m);
+    var s = session(o, lastDone(o, m));
+    var who = lastLabel(o, m);
+    if (!s.total) return '아직 서로 쌓은 기록이 없어. 오늘이 첫 거래야. 먼저 지키는 쪽이 협상에서 유리해.';
+    if (s.done === s.total) return who + '는 네 부탁 ' + s.total + '개를 전부 들어줬어. 이번엔 네가 갚을 차례야.';
+    if (s.done > 0) return who + '는 네 부탁 ' + s.total + '개 중 ' + s.done + '개를 들어줬어. 완벽하진 않아도 약속을 지키려 했어.';
+    return who + '는 네 부탁을 하나도 못 들어줬어. 그래도 네가 먼저 지키면, 다음엔 당당하게 요구할 수 있어.';
+  }
+
+  function meterHtml(label, r, dim) {
+    var pct = r.pct == null ? 0 : r.pct;
+    return '<div class="meter"><div class="meter-top"><span>' + label + '</span><b>' +
+      (r.pct == null ? '기록 없음' : r.pct + '%') + '</b></div>' +
+      '<div class="track"><div class="fill' + (dim ? ' dim' : '') + '" style="width:' + pct + '%"></div></div>' +
+      (r.pct == null ? '' : '<small>최근 7일 · ' + r.total + '번 중 ' + r.done + '번 지킴</small>') + '</div>';
+  }
+
+  function cardHtml(it, m, t) {
+    var o = other(m), e = entry(t, it.id), st = streak(it, m);
+    var cls = 'card' + (e ? ' ' + e.s : '');
+    var h = '<div class="' + cls + '"><div class="c-text">' + esc(it.text) + '</div>';
+    if (it.why && !(e && e.s === 'done')) {
+      h += '<div class="c-why serif">' + esc(it.why) + '<small>' + NAME[o] + '가 적은 이유</small></div>';
+    }
+    if (!e) {
+      h += '<div class="c-meta">' + (st > 0 ? '<b>' + st + '일 연속</b> 지키는 중. 오늘 끊기면 처음부터야.' : '오늘 지키면 연속 기록이 시작돼.') + '</div>';
+      h += '<div class="c-btns"><button class="btn primary" data-act="done" data-id="' + it.id + '">했어</button>' +
+           '<button class="btn ghost" data-act="skip" data-id="' + it.id + '">못 하겠어</button></div>';
+    } else if (e.s === 'done') {
+      h += '<div class="c-state ok"><button data-act="undo" data-id="' + it.id + '">되돌리기</button>지켰어' + (st > 1 ? ' · ' + st + '일 연속' : '') + '</div>';
+    } else {
+      h += '<div class="c-state no"><button data-act="undo" data-id="' + it.id + '">되돌리기</button>못 한다고 전함<i>“' + esc(e.note) + '”</i></div>';
+    }
+    return h + '</div>';
+  }
+
+  function askHtml(it, m) {
+    var o = other(m), day = lastDone(o, m), who = lastLabel(o, m);
+    var h = '<button class="ask" data-act="edit" data-id="' + it.id + '"><div class="ask-t">' + esc(it.text) + '</div>';
+    if (it.created > day) h += '<div class="ask-r">아직 전달 전 · 다음 차례에 보여줄게</div>';
+    else {
+      var e = entry(day, it.id);
+      if (e && e.s === 'done') h += '<div class="ask-r ok">' + who + '가 들어줬어</div>';
+      else if (e && e.s === 'skip') h += '<div class="ask-r no">' + who + ': “' + esc(e.note) + '”</div>';
+      else h += '<div class="ask-r">' + who + '는 답이 없었어</div>';
+    }
+    return h + '</button>';
+  }
+
+  function render() {
+    var m = mode(), o = other(m), t = today(), now = new Date(), i;
+    document.body.className = m;
+
+    var mine = itemsFor(m, t), asks = itemsFor(o, t);
+    var handled = 0, done = 0;
+    for (i = 0; i < mine.length; i++) {
+      var e = entry(t, mine[i].id);
+      if (e) handled++;
+      if (e && e.s === 'done') done++;
+    }
+    // 아직 안 한 것을 위로
+    mine.sort(function (a, b) { return (entry(t, a.id) ? 1 : 0) - (entry(t, b.id) ? 1 : 0); });
+
+    var h = '';
+    h += '<div class="head"><div class="who"><div class="orb"></div><div><h1>' + NAME[m] + '에게</h1>' +
+         '<p>' + (m === 'morning' ? '밤의 네가 보낸 부탁이 도착했어' : '아침의 네가 보낸 부탁이 도착했어') + '</p></div></div>' +
+         '<div class="clock"><b id="clk">' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + '</b>' +
+         '<span>' + (now.getMonth() + 1) + '월 ' + now.getDate() + '일 ' + DAYS[now.getDay()] + '요일</span></div></div>';
+    if (override) {
+      h += '<div class="preview">지금은 실제로 ' + (autoMode() === 'morning' ? '아침' : '밤') + '이지만, ' + NAME[m] + '의 화면을 보는 중이야.' +
+           '<button data-act="flip">돌아가기</button></div>';
+    }
+
+    h += '<div class="main">';
+
+    // 왼쪽: 내가 받은 부탁
+    h += '<div class="col">';
+    h += '<div class="count">' + (mine.length ? done + ' / ' + mine.length : '') + '</div>';
+    h += '<p class="lead">' + NAME[o] + '가 부탁한 것</p>';
+    h += '<p class="lead-sub">' + (m === 'morning' ? '어젯밤의 네가' : '오늘 아침의 네가') + ' 지금의 너를 믿고 맡긴 일이야. 지금은 하기 싫어도, 그때의 너는 이유가 있었어.</p>';
+    if (!mine.length) {
+      h += '<div class="empty">아직 ' + NAME[o] + '가 부탁한 게 없어.<br>아래 “' + NAME[o] + '로 보기”를 눌러 ' + NAME[o] + '의 입장에서 부탁을 적어줘.</div>';
+    } else {
+      if (handled === mine.length) {
+        h += '<div class="allok">' + (done === mine.length
+          ? '전부 지켰어. ' + NAME[o] + '에게 빚진 게 없어. 이제 당당하게 부탁해도 돼.'
+          : '오늘 답은 다 했어. 못 한 건 ' + NAME[o] + '가 사유를 읽게 될 거야.') + '</div>';
+      }
+      for (i = 0; i < mine.length; i++) h += cardHtml(mine[i], m, t);
+    }
+    h += '</div>';
+
+    // 오른쪽: 협상 테이블
+    h += '<div class="col">';
+    h += '<div class="box"><div class="sec-title">협상 테이블</div><p class="plea">' + esc(plea(m)) + '</p>' +
+         meterHtml(NAME[o] + '가 내 부탁을 들어준 비율', rate(o, m), false) +
+         meterHtml('내가 ' + NAME[o] + '의 부탁을 들어준 비율', rate(m, m), true) + '</div>';
+
+    var note = state.notes[o] && state.notes[o].text;
+    h += '<div class="box"><div class="sec-title">' + NAME[o] + '가 남긴 말</div>' +
+         (note ? '<div class="letter serif">' + esc(note) + '</div>' : '<div class="letter-none">남긴 말이 없어.</div>') + '</div>';
+
+    h += '<div class="box"><div class="sec-title">' + NAME[o] + '에게 부탁하기</div>';
+    for (i = 0; i < asks.length; i++) h += askHtml(asks[i], m);
+    h += '<button class="add" data-act="add">+ 부탁 추가</button></div>';
+
+    h += '<div class="box"><div class="sec-title">' + NAME[o] + '에게 남길 말</div>' +
+         '<textarea id="note" rows="3" placeholder="지금 마음을 적어둬. ' + (m === 'morning' ? '오늘 밤' : '내일 아침') + '의 네가 읽게 돼.">' +
+         esc(state.notes[m] ? state.notes[m].text : '') + '</textarea></div>';
+    h += '</div>';
+
+    h += '</div>';
+
+    h += '<div class="foot"><button data-act="flip">' + (override ? '원래 화면으로' : NAME[o] + '로 보기') + '</button>' +
+         '<button data-act="settings">아침 ' + pad(state.settings.morningStart) + '시 · 밤 ' + pad(state.settings.nightStart) + '시 시작</button></div>';
+
+    document.getElementById('app').innerHTML = h;
+    lastKey = m + t;
+  }
+
+  // ---------- 모달 ----------
+  function hours(from, to, sel) {
+    var h = '';
+    for (var i = from; i <= to; i++) h += '<option value="' + i + '"' + (i === sel ? ' selected' : '') + '>' + pad(i) + '시</option>';
+    return h;
+  }
+  function renderModal() {
+    var el = document.getElementById('modal');
+    if (!modal) { el.className = ''; el.innerHTML = ''; return; }
+    var m = mode(), o = other(m), h = '<div class="sheet">', it;
+    if (modal.type === 'item') {
+      it = modal.id ? findItem(modal.id) : null;
+      h += '<h2>' + NAME[o] + '에게 ' + (it ? '보낸 부탁' : '부탁하기') + '</h2>' +
+           '<p>' + NAME[o] + '는 이걸 기억 못 하거나 하기 싫어할 거야. 그때의 너를 설득할 말을 같이 적어줘.</p>' +
+           '<label>부탁</label><input type="text" id="f-text" maxlength="60" placeholder="' + (o === 'morning' ? '예: 알람 울리면 바로 일어나기' : '예: 12시 전에 폰 내려놓기') + '" value="' + esc(it ? it.text : '') + '">' +
+           '<label>왜 필요한지 (설득할 말)</label><textarea id="f-why" rows="3" placeholder="' + (o === 'morning' ? '예: 10분 더 자도 안 개운해. 늦으면 하루 종일 쫓기는 건 나야.' : '예: 네가 1시간 더 보면 내가 아침에 죽을 것 같아.') + '">' + esc(it ? it.why : '') + '</textarea>' +
+           '<div class="err" id="f-err"></div>' +
+           '<div class="sheet-btns">' + (it ? '<button class="btn danger" data-act="m-del">부탁 철회</button>' : '') +
+           '<div class="sp"></div><button class="btn ghost" data-act="m-close">취소</button><button class="btn primary" data-act="m-save">' + (it ? '고치기' : '부탁하기') + '</button></div>';
+    } else if (modal.type === 'skip') {
+      it = findItem(modal.id);
+      h += '<h2>잠깐만.</h2><p>“' + esc(it.text) + '” — ' + NAME[o] + '가 이걸 부탁한 이유를 한 번만 더 읽어줘.</p>' +
+           (it.why ? '<div class="quote serif">' + esc(it.why) + '</div>' : '') +
+           '<label>그래도 못 하겠다면, ' + NAME[o] + '에게 뭐라고 전할래?</label>' +
+           '<textarea id="f-note" rows="3" placeholder="사유를 적어야 넘어갈 수 있어. ' + NAME[o] + '가 그대로 읽게 돼."></textarea>' +
+           '<div class="err" id="f-err"></div>' +
+           '<div class="sheet-btns"><button class="btn ghost" style="margin-left:0" data-act="m-skip">못 한다고 전하기</button>' +
+           '<div class="sp"></div><button class="btn primary" data-act="m-close">그냥 할게</button></div>';
+    } else if (modal.type === 'settings') {
+      h += '<h2>시간 설정</h2><p>이 시각을 기준으로 화면이 아침의 나 / 밤의 나로 바뀌어.</p>' +
+           '<label>아침 시작</label><select id="f-ms">' + hours(3, 11, state.settings.morningStart) + '</select>' +
+           '<label>밤 시작</label><select id="f-ns">' + hours(14, 23, state.settings.nightStart) + '</select>' +
+           '<div class="sheet-btns"><div class="sp"></div><button class="btn ghost" data-act="m-close">취소</button><button class="btn primary" data-act="m-set">저장</button></div>';
+    }
+    el.innerHTML = h + '</div>';
+    el.className = 'on';
+  }
+  function val(id) { var e = document.getElementById(id); return e ? e.value.replace(/^\s+|\s+$/g, '') : ''; }
+  function err(msg) { var e = document.getElementById('f-err'); if (e) e.textContent = msg; }
+  function closeModal() { modal = null; renderModal(); }
+
+  // ---------- 동작 ----------
+  function act(a, id) {
+    var m = mode(), t = today(), it;
+    if (a === 'done') { setEntry(t, id, { s: 'done' }); render(); }
+    else if (a === 'undo') { setEntry(t, id, null); render(); }
+    else if (a === 'skip') { modal = { type: 'skip', id: id }; renderModal(); }
+    else if (a === 'add') { modal = { type: 'item' }; renderModal(); }
+    else if (a === 'edit') { modal = { type: 'item', id: id }; renderModal(); }
+    else if (a === 'settings') { modal = { type: 'settings' }; renderModal(); }
+    else if (a === 'flip') { override = override ? null : other(autoMode()); render(); }
+    else if (a === 'm-close') { closeModal(); }
+    else if (a === 'm-skip') {
+      var note = val('f-note');
+      if (note.length < 2) { err('사유 없이는 넘어갈 수 없어.'); return; }
+      setEntry(t, modal.id, { s: 'skip', note: note });
+      closeModal(); render();
+    }
+    else if (a === 'm-save') {
+      var text = val('f-text'), why = val('f-why');
+      if (!text) { err('부탁 내용을 적어줘.'); return; }
+      if (modal.id) { it = findItem(modal.id); it.text = text; it.why = why; }
+      else state.items.push({ id: 'i' + Date.now().toString(36), to: other(m), text: text, why: why, created: t });
+      save(); closeModal(); render();
+    }
+    else if (a === 'm-del') {
+      it = findItem(modal.id);
+      if (it.created === t) state.items.splice(state.items.indexOf(it), 1); // 오늘 만든 건 흔적 없이 삭제
+      else it.archived = t;
+      save(); closeModal(); render();
+    }
+    else if (a === 'm-set') {
+      state.settings.morningStart = +document.getElementById('f-ms').value;
+      state.settings.nightStart = +document.getElementById('f-ns').value;
+      save(); closeModal(); render();
+    }
+  }
+
+  document.addEventListener('click', function (ev) {
+    var el = ev.target;
+    while (el && el !== document && !(el.getAttribute && el.getAttribute('data-act'))) el = el.parentNode;
+    if (!el || el === document) return;
+    act(el.getAttribute('data-act'), el.getAttribute('data-id'));
+  }, false);
+
+  document.addEventListener('input', function (ev) {
+    if (ev.target && ev.target.id === 'note') {
+      state.notes[mode()] = { text: ev.target.value, day: today() };
+      save();
+    }
+  }, false);
+
+  // 시계 갱신 + 아침/밤이 바뀌면 화면 전환
+  setInterval(function () {
+    var now = new Date(), c = document.getElementById('clk');
+    if (c) c.textContent = pad(now.getHours()) + ':' + pad(now.getMinutes());
+    if (override && lastKey.indexOf(override) !== 0) override = null;
+    if (mode() + today() !== lastKey) {
+      var a = document.activeElement;
+      if (a && a.blur && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')) { if (modal) return; a.blur(); }
+      render();
+    }
+  }, 15000);
+
+  // ---------- 데모 (?demo 로 열면 저장 없이 예시 데이터 표시) ----------
+  if (DEMO) {
+    state = blank();
+    var t0 = today(), d;
+    state.items = [
+      { id: 'a', to: 'morning', text: '알람 울리면 5분 안에 일어나기', why: '10분 더 자도 하나도 안 개운해. 늦으면 하루 종일 쫓기는 건 결국 나야.', created: addDays(t0, -9) },
+      { id: 'b', to: 'morning', text: '물 한 잔 마시고 스트레칭 5분', why: '이거 한 날은 오후에 허리가 덜 아팠어. 5분이면 돼.', created: addDays(t0, -9) },
+      { id: 'c', to: 'morning', text: '아침 먹고 나가기', why: '', created: addDays(t0, -4) },
+      { id: 'x', to: 'night', text: '12시 전에 폰 내려놓기', why: '네가 1시간 더 보면 내가 아침에 죽을 것 같아. 부탁이야.', created: addDays(t0, -9) },
+      { id: 'y', to: 'night', text: '내일 입을 옷 꺼내두기', why: '아침의 나는 판단력이 없어. 2분이면 되는 걸 10분 헤매.', created: addDays(t0, -9) }
+    ];
+    for (var k = 1; k <= 7; k++) {
+      d = addDays(t0, -k);
+      state.log[d] = { a: { s: 'done' }, y: { s: 'done' } };
+      if (k % 3) state.log[d].b = { s: 'done' };
+      if (k > 1) state.log[d].x = (k % 2) ? { s: 'done' } : { s: 'skip', note: '드라마가 한 화 남았었어' };
+      else state.log[d].x = { s: 'skip', note: '너무 피곤해서 누운 채로 보다 잠들었어. 내일은 거실에 두고 잘게.' };
+    }
+    state.log[t0] = { x: { s: 'done' } };
+    state.notes.night = { text: '오늘 진짜 고생했어.\n내일 아침엔 5분만 버텨줘. 일어나기만 하면 나머진 쉬워.', day: addDays(t0, -1) };
+    state.notes.morning = { text: '덕분에 옷 안 헤맸어. 고마워. 오늘은 폰만 좀 부탁해.', day: t0 };
+    var q = /[?&]demo=(morning|night)/.exec(location.search);
+    if (q && q[1] !== autoMode()) override = q[1];
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
