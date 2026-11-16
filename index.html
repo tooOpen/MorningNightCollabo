@@ -154,7 +154,7 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
   var lastKey = '';
 
   function blank() {
-    return { items: [], log: {}, notes: { morning: { text: '' }, night: { text: '' } }, settings: { morningStart: 4, nightStart: 17 } };
+    return { items: [], log: {}, notes: { morning: { text: '' }, night: { text: '' } }, settings: { morningStart: 7, nightStart: 17, v: 2 } };
   }
   function load() {
     var s = null;
@@ -162,7 +162,9 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
     if (!s || !s.items) s = blank();
     if (!s.log) s.log = {};
     if (!s.notes) s.notes = { morning: { text: '' }, night: { text: '' } };
-    if (!s.settings) s.settings = { morningStart: 4, nightStart: 17 };
+    if (!s.settings) s.settings = { morningStart: 7, nightStart: 17, v: 2 };
+    // 예전 기본값(04시)으로 저장된 기기는 새 기본값(07시)으로 한 번만 옮긴다
+    if (!s.settings.v) { if (s.settings.morningStart === 4) s.settings.morningStart = 7; s.settings.v = 2; }
     return s;
   }
   function save() {
