@@ -79,6 +79,8 @@ button { border: 0; background: none; padding: 0; cursor: pointer; }
 .c-state button { float: right; color: var(--sub); font-weight: 500; font-size: 14px; padding: 2px 6px; text-decoration: underline; }
 .c-state i { display: block; font-style: normal; font-weight: 400; color: var(--sub); margin-top: 2px; }
 
+.tag { display: inline-block; vertical-align: middle; font-size: 12px; font-weight: 700; line-height: 1; padding: 4px 7px; border-radius: 6px; background: var(--soft); color: var(--accent); letter-spacing: 0; }
+.rest { color: var(--sub); font-size: 14px; padding: 4px 4px 0; }
 .empty { border: 1px dashed var(--line); border-radius: 16px; padding: 26px 20px; color: var(--sub); text-align: center; word-break: keep-all; }
 .allok { border-radius: 16px; padding: 16px 18px; background: var(--soft); font-size: 18px; margin-bottom: 12px; word-break: keep-all; }
 
@@ -152,9 +154,13 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
   var override = null;   // 미리보기로 강제한 관점
   var modal = null;      // {type, ...}
   var lastKey = '';
+  // 데모 전용: ?demo&at=2026-11-23T08:30 으로 시각을 흉내낸다
+  var AT = DEMO && /[?&]at=([0-9T:-]+)/.exec(location.search);
+  var SHIFT = AT ? new Date(AT[1]).getTime() - Date.now() : 0;
+  function clock() { return new Date(Date.now() + SHIFT); }
 
   function blank() {
-    return { items: [], log: {}, notes: { morning: { text: '' }, night: { text: '' } }, settings: { morningStart: 7, nightStart: 17, v: 2 } };
+    return { items: [], log: {}, notes: { morning: { text: '' }, night: { text: '' } }, settings: { morningStart: 7, weekendMorningStart: 9, nightStart: 17, v: 3 } };
   }
   function load() {
     var s = null;
@@ -162,9 +168,12 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
     if (!s || !s.items) s = blank();
     if (!s.log) s.log = {};
     if (!s.notes) s.notes = { morning: { text: '' }, night: { text: '' } };
-    if (!s.settings) s.settings = { morningStart: 7, nightStart: 17, v: 2 };
+    if (!s.settings) s.settings = { morningStart: 7, weekendMorningStart: 9, nightStart: 17, v: 3 };
     // 예전 기본값(04시)으로 저장된 기기는 새 기본값(07시)으로 한 번만 옮긴다
     if (!s.settings.v) { if (s.settings.morningStart === 4) s.settings.morningStart = 7; s.settings.v = 2; }
+    // 주말 아침 시작 시각이 없던 기기
+    if (s.settings.weekendMorningStart == null) s.settings.weekendMorningStart = Math.max(9, s.settings.morningStart);
+    s.settings.v = 3;
     return s;
   }
   function save() {
@@ -177,21 +186,47 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
   function fmt(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
   function parse(s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
   function addDays(s, n) { var d = parse(s); d.setDate(d.getDate() + n); return fmt(d); }
+  function isWeekendDate(s) { var w = parse(s).getDay(); return w === 0 || w === 6; }
+  // 그 날짜의 아침이 시작되는 시각 (토·일은 주말 시각)
+  function morningStartOf(s) { return isWeekendDate(s) ? state.settings.weekendMorningStart : state.settings.morningStart; }
   // 하루는 '아침 시작 시각'에 시작한다. 새벽 2시는 아직 어제의 밤.
-  function today() { return fmt(new Date(Date.now() - state.settings.morningStart * 3600000)); }
+  function today() {
+    var now = clock(), d = fmt(now);
+    return now.getHours() < morningStartOf(d) ? addDays(d, -1) : d;
+  }
   function autoMode() {
-    var h = new Date().getHours();
-    return (h >= state.settings.morningStart && h < state.settings.nightStart) ? 'morning' : 'night';
+    var now = clock(), h = now.getHours();
+    return (h >= morningStartOf(fmt(now)) && h < state.settings.nightStart) ? 'morning' : 'night';
+  }
+  // 주말 차례인가: 아침은 토·일 아침, 밤은 다음 날이 쉬는 금·토 밤
+  function isWeekendSession(self, day) {
+    return self === 'morning' ? isWeekendDate(day) : isWeekendDate(addDays(day, 1));
+  }
+  function applies(it, day) {
+    var d = it.days || 'all';
+    if (d === 'all') return true;
+    return (d === 'weekend') === isWeekendSession(it.to, day);
+  }
+  function daysLabel(to, d) {
+    if (d === 'weekday') return to === 'morning' ? '평일 아침만 (월~금)' : '평일 밤만 (일~목)';
+    if (d === 'weekend') return to === 'morning' ? '주말 아침만 (토·일)' : '주말 밤만 (금·토)';
+    return '매일';
+  }
+  function daysTag(it) {
+    var d = it.days || 'all';
+    return d === 'all' ? '' : (d === 'weekday' ? '평일만' : '주말만');
   }
   function mode() { return override || autoMode(); }
   function other(m) { return m === 'morning' ? 'night' : 'morning'; }
 
   // ---------- 기록 ----------
   function existed(it, day) { return it.created <= day && (!it.archived || it.archived > day); }
-  function itemsFor(self, day) {
-    var out = [];
+  // 그 날 self가 지켜야 하는 부탁 (all이면 쉬는 날 부탁도 포함)
+  function itemsFor(self, day, all) {
+    var out = [], it;
     for (var i = 0; i < state.items.length; i++) {
-      if (state.items[i].to === self && existed(state.items[i], day)) out.push(state.items[i]);
+      it = state.items[i];
+      if (it.to === self && existed(it, day) && (all || applies(it, day))) out.push(it);
     }
     return out;
   }
@@ -224,13 +259,17 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
     return { total: total, done: done, pct: total ? Math.round(done / total * 100) : null };
   }
   function streak(it, m) {
+    // 쉬는 날(해당 없는 날)은 건너뛰고 세며, 연속 기록을 끊지 않는다
     var n = 0, day = lastDone(it.to, m), e;
-    for (var i = 0; i < 400; i++) {
-      e = entry(day, it.id);
-      if (!(e && e.s === 'done')) break;
-      n++; day = addDays(day, -1);
+    for (var i = 0; i < 400 && day >= it.created; i++) {
+      if (applies(it, day)) {
+        e = entry(day, it.id);
+        if (!(e && e.s === 'done')) break;
+        n++;
+      }
+      day = addDays(day, -1);
     }
-    if (it.to === m) { e = entry(today(), it.id); if (e && e.s === 'done') n++; }
+    if (it.to === m && applies(it, today())) { e = entry(today(), it.id); if (e && e.s === 'done') n++; }
     return n;
   }
   function findItem(id) {
@@ -252,7 +291,10 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
     var o = other(m);
     var s = session(o, lastDone(o, m));
     var who = lastLabel(o, m);
-    if (!s.total) return '아직 서로 쌓은 기록이 없어. 오늘이 첫 거래야. 먼저 지키는 쪽이 협상에서 유리해.';
+    if (!s.total) {
+      if (itemsFor(o, lastDone(o, m), true).length) return who + '는 쉬는 차례라 지킬 부탁이 없었어. 이번엔 네가 먼저 지켜서 점수를 쌓아둬.';
+      return '아직 서로 쌓은 기록이 없어. 오늘이 첫 거래야. 먼저 지키는 쪽이 협상에서 유리해.';
+    }
     if (s.done === s.total) return who + '는 네 부탁 ' + s.total + '개를 전부 들어줬어. 이번엔 네가 갚을 차례야.';
     if (s.done > 0) return who + '는 네 부탁 ' + s.total + '개 중 ' + s.done + '개를 들어줬어. 완벽하진 않아도 약속을 지키려 했어.';
     return who + '는 네 부탁을 하나도 못 들어줬어. 그래도 네가 먼저 지키면, 다음엔 당당하게 요구할 수 있어.';
@@ -269,7 +311,8 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
   function cardHtml(it, m, t) {
     var o = other(m), e = entry(t, it.id), st = streak(it, m);
     var cls = 'card' + (e ? ' ' + e.s : '');
-    var h = '<div class="' + cls + '"><div class="c-text">' + esc(it.text) + '</div>';
+    var tag = daysTag(it);
+    var h = '<div class="' + cls + '"><div class="c-text">' + esc(it.text) + (tag ? ' <span class="tag">' + tag + '</span>' : '') + '</div>';
     if (it.why && !(e && e.s === 'done')) {
       h += '<div class="c-why serif">' + esc(it.why) + '<small>' + NAME[o] + '가 적은 이유</small></div>';
     }
@@ -287,8 +330,10 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
 
   function askHtml(it, m) {
     var o = other(m), day = lastDone(o, m), who = lastLabel(o, m);
-    var h = '<button class="ask" data-act="edit" data-id="' + it.id + '"><div class="ask-t">' + esc(it.text) + '</div>';
+    var tag = daysTag(it);
+    var h = '<button class="ask" data-act="edit" data-id="' + it.id + '"><div class="ask-t">' + esc(it.text) + (tag ? ' <span class="tag">' + tag + '</span>' : '') + '</div>';
     if (it.created > day) h += '<div class="ask-r">아직 전달 전 · 다음 차례에 보여줄게</div>';
+    else if (!applies(it, day)) h += '<div class="ask-r">지난 차례엔 쉬는 부탁이었어</div>';
     else {
       var e = entry(day, it.id);
       if (e && e.s === 'done') h += '<div class="ask-r ok">' + who + '가 들어줬어</div>';
@@ -299,10 +344,12 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
   }
 
   function render() {
-    var m = mode(), o = other(m), t = today(), now = new Date(), i;
+    var m = mode(), o = other(m), t = today(), now = clock(), i;
     document.body.className = m;
 
-    var mine = itemsFor(m, t), asks = itemsFor(o, t);
+    var mine = itemsFor(m, t), asks = itemsFor(o, t, true);
+    var resting = itemsFor(m, t, true).length - mine.length;
+    var wk = isWeekendSession(m, t);
     var handled = 0, done = 0;
     for (i = 0; i < mine.length; i++) {
       var e = entry(t, mine[i].id);
@@ -314,7 +361,8 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
 
     var h = '';
     h += '<div class="head"><div class="who"><div class="orb"></div><div><h1>' + NAME[m] + '에게</h1>' +
-         '<p>' + (m === 'morning' ? '밤의 네가 보낸 부탁이 도착했어' : '아침의 네가 보낸 부탁이 도착했어') + '</p></div></div>' +
+         '<p><span class="tag">' + (wk ? '주말' : '평일') + ' ' + (m === 'morning' ? '아침' : '밤') + '</span> ' +
+         (m === 'morning' ? '밤의 네가 보낸 부탁이 도착했어' : '아침의 네가 보낸 부탁이 도착했어') + '</p></div></div>' +
          '<div class="clock"><b id="clk">' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + '</b>' +
          '<span>' + (now.getMonth() + 1) + '월 ' + now.getDate() + '일 ' + DAYS[now.getDay()] + '요일</span></div></div>';
     if (override) {
@@ -329,7 +377,9 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
     h += '<div class="count">' + (mine.length ? done + ' / ' + mine.length : '') + '</div>';
     h += '<p class="lead">' + NAME[o] + '가 부탁한 것</p>';
     h += '<p class="lead-sub">' + (m === 'morning' ? '어젯밤의 네가' : '오늘 아침의 네가') + ' 지금의 너를 믿고 맡긴 일이야. 지금은 하기 싫어도, 그때의 너는 이유가 있었어.</p>';
-    if (!mine.length) {
+    if (!mine.length && resting) {
+      h += '<div class="empty">' + (wk ? '주말' : '평일') + '이라 오늘은 지킬 부탁이 없어. 푹 쉬어.</div>';
+    } else if (!mine.length) {
       h += '<div class="empty">아직 ' + NAME[o] + '가 부탁한 게 없어.<br>아래 “' + NAME[o] + '로 보기”를 눌러 ' + NAME[o] + '의 입장에서 부탁을 적어줘.</div>';
     } else {
       if (handled === mine.length) {
@@ -338,6 +388,7 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
           : '오늘 답은 다 했어. 못 한 건 ' + NAME[o] + '가 사유를 읽게 될 거야.') + '</div>';
       }
       for (i = 0; i < mine.length; i++) h += cardHtml(mine[i], m, t);
+      if (resting) h += '<div class="rest">' + (wk ? '주말' : '평일') + '이라 쉬는 부탁 ' + resting + '개는 숨겨뒀어.</div>';
     }
     h += '</div>';
 
@@ -363,7 +414,7 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
     h += '</div>';
 
     h += '<div class="foot"><button data-act="flip">' + (override ? '원래 화면으로' : NAME[o] + '로 보기') + '</button>' +
-         '<button data-act="settings">아침 ' + pad(state.settings.morningStart) + '시 · 밤 ' + pad(state.settings.nightStart) + '시 시작</button></div>';
+         '<button data-act="settings">아침 ' + pad(state.settings.morningStart) + '시 (주말 ' + pad(state.settings.weekendMorningStart) + '시) · 밤 ' + pad(state.settings.nightStart) + '시 시작</button></div>';
 
     document.getElementById('app').innerHTML = h;
     lastKey = m + t;
@@ -385,6 +436,12 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
            '<p>' + NAME[o] + '는 이걸 기억 못 하거나 하기 싫어할 거야. 그때의 너를 설득할 말을 같이 적어줘.</p>' +
            '<label>부탁</label><input type="text" id="f-text" maxlength="60" placeholder="' + (o === 'morning' ? '예: 알람 울리면 바로 일어나기' : '예: 12시 전에 폰 내려놓기') + '" value="' + esc(it ? it.text : '') + '">' +
            '<label>왜 필요한지 (설득할 말)</label><textarea id="f-why" rows="3" placeholder="' + (o === 'morning' ? '예: 10분 더 자도 안 개운해. 늦으면 하루 종일 쫓기는 건 나야.' : '예: 네가 1시간 더 보면 내가 아침에 죽을 것 같아.') + '">' + esc(it ? it.why : '') + '</textarea>' +
+           '<label>언제 지킬 부탁?</label><select id="f-days">' +
+           (function () {
+             var cur = (it && it.days) || 'all', s = '', ks = ['all', 'weekday', 'weekend'];
+             for (var k = 0; k < 3; k++) s += '<option value="' + ks[k] + '"' + (ks[k] === cur ? ' selected' : '') + '>' + daysLabel(o, ks[k]) + '</option>';
+             return s;
+           })() + '</select>' +
            '<div class="err" id="f-err"></div>' +
            '<div class="sheet-btns">' + (it ? '<button class="btn danger" data-act="m-del">부탁 철회</button>' : '') +
            '<div class="sp"></div><button class="btn ghost" data-act="m-close">취소</button><button class="btn primary" data-act="m-save">' + (it ? '고치기' : '부탁하기') + '</button></div>';
@@ -399,7 +456,8 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
            '<div class="sp"></div><button class="btn primary" data-act="m-close">그냥 할게</button></div>';
     } else if (modal.type === 'settings') {
       h += '<h2>시간 설정</h2><p>이 시각을 기준으로 화면이 아침의 나 / 밤의 나로 바뀌어.</p>' +
-           '<label>아침 시작</label><select id="f-ms">' + hours(3, 11, state.settings.morningStart) + '</select>' +
+           '<label>평일 아침 시작 (월~금)</label><select id="f-ms">' + hours(3, 11, state.settings.morningStart) + '</select>' +
+           '<label>주말 아침 시작 (토·일)</label><select id="f-ws">' + hours(3, 13, state.settings.weekendMorningStart) + '</select>' +
            '<label>밤 시작</label><select id="f-ns">' + hours(14, 23, state.settings.nightStart) + '</select>' +
            '<div class="sheet-btns"><div class="sp"></div><button class="btn ghost" data-act="m-close">취소</button><button class="btn primary" data-act="m-set">저장</button></div>';
     }
@@ -428,10 +486,10 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
       closeModal(); render();
     }
     else if (a === 'm-save') {
-      var text = val('f-text'), why = val('f-why');
+      var text = val('f-text'), why = val('f-why'), days = val('f-days') || 'all';
       if (!text) { err('부탁 내용을 적어줘.'); return; }
-      if (modal.id) { it = findItem(modal.id); it.text = text; it.why = why; }
-      else state.items.push({ id: 'i' + Date.now().toString(36), to: other(m), text: text, why: why, created: t });
+      if (modal.id) { it = findItem(modal.id); it.text = text; it.why = why; it.days = days; }
+      else state.items.push({ id: 'i' + Date.now().toString(36), to: other(m), text: text, why: why, days: days, created: t });
       save(); closeModal(); render();
     }
     else if (a === 'm-del') {
@@ -442,6 +500,7 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
     }
     else if (a === 'm-set') {
       state.settings.morningStart = +document.getElementById('f-ms').value;
+      state.settings.weekendMorningStart = +document.getElementById('f-ws').value;
       state.settings.nightStart = +document.getElementById('f-ns').value;
       save(); closeModal(); render();
     }
@@ -463,7 +522,7 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
 
   // 시계 갱신 + 아침/밤이 바뀌면 화면 전환
   setInterval(function () {
-    var now = new Date(), c = document.getElementById('clk');
+    var now = clock(), c = document.getElementById('clk');
     if (c) c.textContent = pad(now.getHours()) + ':' + pad(now.getMinutes());
     if (override && lastKey.indexOf(override) !== 0) override = null;
     if (mode() + today() !== lastKey) {
@@ -478,10 +537,10 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
     state = blank();
     var t0 = today(), d;
     state.items = [
-      { id: 'a', to: 'morning', text: '알람 울리면 5분 안에 일어나기', why: '10분 더 자도 하나도 안 개운해. 늦으면 하루 종일 쫓기는 건 결국 나야.', created: addDays(t0, -9) },
+      { id: 'a', to: 'morning', text: '알람 울리면 5분 안에 일어나기', why: '10분 더 자도 하나도 안 개운해. 늦으면 하루 종일 쫓기는 건 결국 나야.', days: 'weekday', created: addDays(t0, -9) },
       { id: 'b', to: 'morning', text: '물 한 잔 마시고 스트레칭 5분', why: '이거 한 날은 오후에 허리가 덜 아팠어. 5분이면 돼.', created: addDays(t0, -9) },
       { id: 'c', to: 'morning', text: '아침 먹고 나가기', why: '', created: addDays(t0, -4) },
-      { id: 'x', to: 'night', text: '12시 전에 폰 내려놓기', why: '네가 1시간 더 보면 내가 아침에 죽을 것 같아. 부탁이야.', created: addDays(t0, -9) },
+      { id: 'x', to: 'night', text: '12시 전에 폰 내려놓기', why: '네가 1시간 더 보면 내가 아침에 죽을 것 같아. 부탁이야.', days: 'weekday', created: addDays(t0, -9) },
       { id: 'y', to: 'night', text: '내일 입을 옷 꺼내두기', why: '아침의 나는 판단력이 없어. 2분이면 되는 걸 10분 헤매.', created: addDays(t0, -9) }
     ];
     for (var k = 1; k <= 7; k++) {
