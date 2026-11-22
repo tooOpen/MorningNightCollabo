@@ -198,9 +198,9 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
     var now = clock(), h = now.getHours();
     return (h >= morningStartOf(fmt(now)) && h < state.settings.nightStart) ? 'morning' : 'night';
   }
-  // 주말 차례인가: 아침은 토·일 아침, 밤은 다음 날이 쉬는 금·토 밤
+  // 주말 차례인가: 아침·밤 모두 그 날짜가 토·일이면 주말
   function isWeekendSession(self, day) {
-    return self === 'morning' ? isWeekendDate(day) : isWeekendDate(addDays(day, 1));
+    return isWeekendDate(day);
   }
   function applies(it, day) {
     var d = it.days || 'all';
@@ -208,8 +208,8 @@ textarea:focus, input[type=text]:focus { border-color: var(--accent); }
     return (d === 'weekend') === isWeekendSession(it.to, day);
   }
   function daysLabel(to, d) {
-    if (d === 'weekday') return to === 'morning' ? '평일 아침만 (월~금)' : '평일 밤만 (일~목)';
-    if (d === 'weekend') return to === 'morning' ? '주말 아침만 (토·일)' : '주말 밤만 (금·토)';
+    if (d === 'weekday') return to === 'morning' ? '평일 아침만 (월~금)' : '평일 밤만 (월~금)';
+    if (d === 'weekend') return to === 'morning' ? '주말 아침만 (토·일)' : '주말 밤만 (토·일)';
     return '매일';
   }
   function daysTag(it) {
